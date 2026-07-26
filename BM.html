@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>BM UTF8 编解码工具</title>
+<style>
+*{box-sizing:border-box;font-family:system-ui,monospace}
+body{max-width:920px;margin:40px auto;padding:0 20px;background:#f8f9fa}
+.box{background:#fff;padding:20px;border-radius:10px;box-shadow:0 2px 10px #ddd}
+h2{color:#222;margin-top:0}
+.radio-group{margin:12px 0}
+textarea{width:100%;min-height:130px;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:6px;margin:8px 0}
+button{padding:10px 24px;font-size:16px;border:none;border-radius:6px;cursor:pointer;margin:6px 4px}
+#runBtn{background:#2563eb;color:#fff}
+#clearBtn{background:#6c757d;color:#fff}
+#resultBox{background:#f0f4f9;padding:14px;border-radius:6px;white-space:pre-wrap;min-height:80px;font-family:Consolas}
+.error{color:#dc3545}
+</style>
+</head>
+<body>
+<div class="box">
+<h2>BM UTF8 编解码工具（--tout / --tin）</h2>
+<div class="radio-group">
+<label>
+<input type="radio" name="mode" value="tout"> 编码 --tout（文字→UTF8十六进制）
+</label>
+&nbsp;&nbsp;
+<label>
+<input type="radio" name="mode" value="tin"> 解码 --tin（十六进制→文字）
+</label>
+</div>
+
+<h4>输入内容</h4>
+<textarea id="inputTxt" placeholder="编码：输入中文/英文/emoji
+解码：输入空格分隔大写十六进制，例：E4 B8 AD"></textarea>
+
+<div>
+<button id="runBtn" onclick="execute()">执行转换</button>
+<button id="clearBtn" onclick="clearAll()">清空全部</button>
+</div>
+
+<h4>输出结果</h4>
+<div id="resultBox"></div>
+</div>
+
+<script>
+// 获取URL参数
+function getParam(key) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(key);
+}
+
+// UTF8 编码
+function utf8EncodeRaw(text) {
+    const buf = [];
+    for (const ch of text) {
+        const code = ch.codePointAt(0);
+        if (code <= 0x7F) {
+            buf.push(code);
+        } else if (code <= 0x7FF) {
+            const b1 = 0xC0 | (code >> 6);
+            const b2 = 0x80 | (code & 0x3F);
+            buf.push(b1, b2);
+        } else if (code <= 0xFFFF) {
+            const b1 = 0xE0 | (code >> 12);
+            const b2 = 0x80 | ((code >> 6) & 0x3F);
+            const b3 = 0x80 | (code & 0x3F);
+            buf.push(b1, b2, b3);
+        } else if (code <= 0x10FFFF) {
+            const b1 = 0xF0 | (code >> 18);
+            const b2 = 0x80 | ((code >> 12) & 0x3F);
+            const b3 = 0x80 | ((code >> 6) & 0x3F);
+            const b4 = 0x80 | (code & 0x3F);
+            buf.push(b1, b2, b3, b4);
+        } else {
+            throw new Error(`字符码点${code}超出Unicode合法范围`);
+        }
+    }
+    return buf.map(n => n.toString(16).padStart(2, '0').toUpperCase()).join(" ");
+}
+
+// UTF8 解码
+function utf8DecodeRaw(hexStr) {
+    const cleanHex = hexStr.replace(/\s+/g, "");
+    if (cleanHex.length % 2 !== 0) throw new Error("十六进制长度必须为偶数");
+    if (!/^[0-9a-fA-F]*$/.test(cleanHex)) throw new Error("存在非法十六进制字符");
+    const bytes = [];
+    for (let i = 0; i < cleanHex.length; i += 2) {
+        bytes.push(parseInt(cleanHex.substr(i, 2), 16));
+    }
+    try {
+        return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+    } catch (e) {
+        throw new Error("非合法UTF8字节流，解码失败");
+    }
+}
+
+function execute() {
+    const input = document.getElementById("inputTxt").value;
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    const resBox = document.getElementById("resultBox");
+    try {
+        if (!input.trim()) throw new Error("输入不能为空");
+        let result;
+        if (mode === "tout") {
+            result = utf8EncodeRaw(input);
+        } else {
+            result = utf8DecodeRaw(input);
+        }
+        resBox.textContent = result;
+        resBox.className = "";
+    } catch (err) {
+        resBox.textContent = "错误：" + err.message;
+        resBox.className = "error";
+    }
+}
+
+function clearAll() {
+    document.getElementById("inputTxt").value = "";
+    document.getElementById("resultBox").textContent = "";
+    document.getElementById("resultBox").className = "";
+}
+
+// ==========【修复核心：无参数默认tout】==========
+window.onload = function () {
+    const runMode = getParam("mode");
+    if (runMode === "tin") {
+        document.querySelector('input[name="mode"][value="tin"]').checked = true;
+    } else {
+        // 没有mode、mode=tout、乱参数 → 默认选中tout
+        document.querySelector('input[name="mode"][value="tout"]').checked = true;
+    }
+}
+</script>
+</body>
+</html>
